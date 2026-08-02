@@ -1,4 +1,4 @@
-# mini-agnes-video
+# miniSeedance
 
 一个最小但完整的文生视频（text-to-video）/ 音视频联合生成模型。采样方法与训练目标取自 [Self-Flow](../Self-Flow)，Video VAE 与 DiT 结构参考 [daVinci-MagiHuman](../daVinci-MagiHuman)。
 
