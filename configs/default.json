@@ -1,0 +1,59 @@
+{
+  "model": {
+    "type": "video_dit",
+    "hidden_size": 768,
+    "depth": 12,
+    "num_heads": 12,
+    "patch_size": 1,
+    "attention": "flash"
+  },
+  "text_encoder": {
+    "type": "clip",
+    "name_or_path": "openai/clip-vit-base-patch32",
+    "text_len": 16
+  },
+  "video_vae": {
+    "type": "wan2.2",
+    "path": "checkpoints/Wan2.2_VAE.pth"
+  },
+  "audio_vae": {
+    "type": "stable_audio",
+    "path": "checkpoints/stable-audio-open-1.0"
+  },
+  "train": {
+    "objective": "selfflow",
+    "steps": 6000,
+    "batch_size": 128,
+    "lr": 1e-4,
+    "lr_schedule": "constant",
+    "warmup": 0,
+    "t_sampler": "lognorm",
+    "t_shift": 2.95,
+    "t_low_snr": 0.05,
+    "cfg_dropout": 0.1,
+    "audio_weight": 1.0,
+    "ema_decay": 0.9999,
+    "ema_warmup": 0,
+    "grad_clip": 1.0,
+    "seed": 0,
+    "mask_ratio": 0.1,
+    "distill_weight": 0.8,
+    "distill_warmup": 0,
+    "student_layer": null,
+    "teacher_layer": null,
+    "log_every": 100,
+    "ckpt_every": 2000,
+    "wandb": {"enabled": true, "project": "mini-agnes-video", "run_name": null},
+    "sample_mode": "ODE",
+    "sample_shift": 15.0,
+    "fid": {
+      "every": 1000, "num_videos": 32, "num_steps": 50,
+      "cfg_scale": 1.0, "use_ema": true
+    },
+    "sample": {
+      "every": 1000, "count": 4, "num_steps": 50,
+      "cfg_scale": 5.0, "use_ema": true
+    },
+    "test": {"every": 2000, "num_steps": 50, "cfg_scale": 5.0, "use_ema": true}
+  }
+}
