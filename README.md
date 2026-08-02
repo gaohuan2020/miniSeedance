@@ -8,7 +8,8 @@ A minimal yet complete text-to-video / joint audio-video generation model. The s
 ![Sample 3](./assert/Unknown-3.gif)
 ![Sample 4](./assert/Unknown-4.gif)
 
-![architecture(./assert/architecture)
+![architecture(./assert/architecture.png)
+
 Pipeline overview:
 
 ```
