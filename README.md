@@ -4,6 +4,8 @@
 
 # 生成样例
 ![样例1](./assert/Unknown.gif)
+![样例2](./assert/Unknown-2.gif)
+![样例3](./assert/Unknown-3.gif)
 
 
 
