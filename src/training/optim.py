@@ -91,14 +91,33 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
         for group in self.param_groups:
             if group["use_muon"]:
                 for params in self._shape_buckets(group["params"]):
-                    grads = torch.stack([p.grad for p in params])
-                    state = self.state[params[0]]
-                    if len(state) == 0:
-                        state["momentum_stack"] = torch.zeros_like(grads)
-                    update = muon_update(grads, state["momentum_stack"], beta=group["momentum"])
+                    active = [p for p in params if p.grad is not None]
+                    if not active:
+                        continue
+                    grads = torch.stack([p.grad for p in active])
+                    if len(active) == len(params):
+                        state = self.state[active[0]]
+                        if "momentum_stack" not in state:
+                            state["momentum_stack"] = torch.zeros_like(grads)
+                        update = muon_update(
+                            grads, state["momentum_stack"], beta=group["momentum"]
+                        )
+                    else:
+                        # Sparse MoE routing can leave an expert unused. Keep
+                        # momentum per active parameter when the bucket is partial.
+                        momenta = []
+                        for p in active:
+                            state = self.state[p]
+                            if "sparse_momentum" not in state:
+                                state["sparse_momentum"] = torch.zeros_like(p)
+                            momenta.append(state["sparse_momentum"])
+                        momentum = torch.stack(momenta)
+                        update = muon_update(grads, momentum, beta=group["momentum"])
+                        for p, value in zip(active, momentum.unbind(0)):
+                            self.state[p]["sparse_momentum"].copy_(value)
                     if group["weight_decay"]:
-                        torch._foreach_mul_(params, 1 - group["lr"] * group["weight_decay"])
-                    torch._foreach_add_(params, list(update.to(params[0].dtype).unbind(0)),
+                        torch._foreach_mul_(active, 1 - group["lr"] * group["weight_decay"])
+                    torch._foreach_add_(active, list(update.to(active[0].dtype).unbind(0)),
                                         alpha=-group["lr"])
             else:
                 params = [p for p in group["params"] if p.grad is not None]
@@ -127,9 +146,16 @@ def build_optimizer(model, tcfg):
     elif kind == "muon":
         # Muon only fits hidden 2D weights (transformer blocks); embedders,
         # heads, gains and biases keep AdamW, as in DiT-Muon. mHC's tiny n x n
-        # static table (b_res) is bias-like despite being 2D.
+        # static tables (b_res / modality_scale_shift) are bias-like despite
+        # being 2D.
         def is_muon(n, p):
-            return p.ndim >= 2 and n.startswith("blocks.") and not n.endswith("b_res")
+            return (
+                p.ndim >= 2
+                and n.startswith(("blocks.", "context_refiner."))
+                and ".mlp.router." not in n
+                and not n.endswith("b_res")
+                and not n.endswith("modality_scale_shift")
+            )
 
         muon_params = [p for n, p in model.named_parameters() if is_muon(n, p) and p.requires_grad]
         adamw_params = [p for n, p in model.named_parameters()
