@@ -56,6 +56,7 @@ TRAIN_DEFAULTS = {
     "mask_ratio": 0.1,                # video ratio (image: 0.25, audio: 0.5)
     "distill_weight": 0.8,            # paper's gamma
     "distill_warmup": 0,
+    "router_aux_weight": 0.01,         # Switch-style MoE load-balancing loss
     "student_layer": None,
     "teacher_layer": None,
     # Which weights --init-from reads. The raw student is what training
@@ -107,7 +108,54 @@ def load_config(path=DEFAULT_CONFIG, overrides=None):
     config["train"] = _deep_merge(TRAIN_DEFAULTS, config.get("train", {}))
     for item in overrides or []:
         apply_override(config, item)
+    _validate_moe(config)
     return config
+
+
+def _validate_moe(config):
+    model = config["model"]
+    hidden_size = model["hidden_size"]
+    num_heads = model["num_heads"]
+    attention_head_dim = model.get("attention_head_dim")
+    if attention_head_dim is None:
+        if hidden_size % num_heads:
+            raise ValueError("model.hidden_size must be divisible by model.num_heads")
+        effective_head_dim = hidden_size // num_heads
+    else:
+        if attention_head_dim <= 0 or attention_head_dim % 8:
+            raise ValueError("model.attention_head_dim must be a positive multiple of 8")
+        effective_head_dim = attention_head_dim
+    rope_freq_dim = model.get("mm_rope_freq_dim")
+    if rope_freq_dim is not None:
+        if rope_freq_dim <= 0:
+            raise ValueError("model.mm_rope_freq_dim must be positive")
+        if 6 * rope_freq_dim > effective_head_dim:
+            raise ValueError(
+                "3D MM-RoPE uses 6 * mm_rope_freq_dim channels, "
+                "which must not exceed attention_head_dim"
+            )
+    if model.get("mm_rope_theta", 10000.0) <= 0:
+        raise ValueError("model.mm_rope_theta must be positive")
+    if not isinstance(model.get("modality_adaln", False), bool):
+        raise ValueError("model.modality_adaln must be a boolean")
+    context_refiner_layers = model.get("context_refiner_layers", 0)
+    if (
+        not isinstance(context_refiner_layers, int)
+        or isinstance(context_refiner_layers, bool)
+        or context_refiner_layers < 0
+    ):
+        raise ValueError("model.context_refiner_layers must be a non-negative integer")
+
+    num_experts = model.get("moe_num_experts", 0)
+    top_k = model.get("moe_top_k", 2)
+    if num_experts < 0:
+        raise ValueError("model.moe_num_experts must be non-negative")
+    if num_experts and not 1 <= top_k <= num_experts:
+        raise ValueError("model.moe_top_k must be between 1 and moe_num_experts")
+    if num_experts and not model.get("moe_shared_expert", True):
+        raise ValueError("MoE requires model.moe_shared_expert=true")
+    if config["train"]["router_aux_weight"] < 0:
+        raise ValueError("train.router_aux_weight must be non-negative")
 
 
 def apply_override(config, item):
@@ -132,7 +180,15 @@ def model_kwargs(config):
     m = config["model"]
     return dict(hidden_size=m["hidden_size"], depth=m["depth"], num_heads=m["num_heads"],
                 attention=m.get("attention", "flash"), adaln=m.get("adaln", "per_block"),
-                mhc=m.get("mhc", 0), pooled_text=m.get("pooled_text", False))
+                mhc=m.get("mhc", 0), pooled_text=m.get("pooled_text", False),
+                attention_head_dim=m.get("attention_head_dim"),
+                mm_rope_freq_dim=m.get("mm_rope_freq_dim"),
+                mm_rope_theta=m.get("mm_rope_theta", 10000.0),
+                modality_adaln=m.get("modality_adaln", False),
+                context_refiner_layers=m.get("context_refiner_layers", 0),
+                moe_num_experts=m.get("moe_num_experts", 0),
+                moe_top_k=m.get("moe_top_k", 2),
+                moe_shared_expert=m.get("moe_shared_expert", True))
 
 
 def resolve_ckpt_config(ckpt):
