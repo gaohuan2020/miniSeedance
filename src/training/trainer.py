@@ -113,6 +113,7 @@ class Trainer:
             self.tcfg, config["model"]["depth"],
             video_channels=self.layout.token_dim,
             audio_channels=c_aud or 0,
+            moe_num_experts=config["model"].get("moe_num_experts", 0),
         )
 
         # Sequence-packing budget: static across steps so torch.compile sees one
@@ -146,7 +147,10 @@ class Trainer:
         if self.world_size > 1:
             self.ddp_model = DDP(
                 self.model, device_ids=[local_rank],
-                find_unused_parameters=self.objective.needs_unused_param_handling,
+                find_unused_parameters=(
+                    self.objective.needs_unused_param_handling
+                    or bool(config["model"].get("moe_num_experts", 0))
+                ),
                 gradient_as_bucket_view=True,
             )
             if self.tcfg["grad_compress_bf16"]:
