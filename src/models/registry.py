@@ -89,6 +89,14 @@ def _video_dit(cfg, device, *, video_in_channels, text_in_channels, audio_in_cha
         adaln=cfg.get("adaln", "per_block"),
         mhc=cfg.get("mhc", 0),
         pooled_text=cfg.get("pooled_text", False),
+        attention_head_dim=cfg.get("attention_head_dim"),
+        mm_rope_freq_dim=cfg.get("mm_rope_freq_dim"),
+        mm_rope_theta=cfg.get("mm_rope_theta", 10000.0),
+        modality_adaln=cfg.get("modality_adaln", False),
+        context_refiner_layers=cfg.get("context_refiner_layers", 0),
+        moe_num_experts=cfg.get("moe_num_experts", 0),
+        moe_top_k=cfg.get("moe_top_k", 2),
+        moe_shared_expert=cfg.get("moe_shared_expert", True),
     ).to(device)
 
 
